@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { margin: 0; overflow: hidden; background: #1a1a2e; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.z = 5;
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  var light = new THREE.DirectionalLight(0xffffff, 1.5);
+  light.position.set(5, 5, 5);
+  scene.add(light);
+  var light2 = new THREE.DirectionalLight(0xffffff, 0.8);
+  light2.position.set(-5, -3, 3);
+  scene.add(light2);
+
+  // Cargar STL con XMLHttpRequest clásico
+  var loader = new THREE.FileLoader();
+  loader.setResponseType('arraybuffer');
+  loader.load('pecesweb.stl', function(buffer) {
+    // Parser STL binario integrado
+    var geometry = parseBinarySTL(buffer);
+    geometry.computeVertexNormals();
+    geometry.center();
+
+    var box = new THREE.Box3().setFromObject(new THREE.Mesh(geometry));
+    var size = new THREE.Vector3();
+    box.getSize(size);
+    var s = 3.0 / Math.max(size.x, size.y, size.z);
+    geometry.scale(s, s, s);
+
+    var material = new THREE.MeshPhongMaterial({
+      color: 0xff6a00,
+      specular: 0xffcc88,
+      shininess: 80,
+      emissive: 0x2a0a00
+    });
+    var mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+  });
+
+  function parseBinarySTL(buffer) {
+    var geometry = new THREE.BufferGeometry();
+    var reader = new DataView(buffer);
+    var faces = reader.getUint32(80, true);
+    var verts = new Float32Array(faces * 9);
+    var norms = new Float32Array(faces * 9);
+    var offset = 84;
+    for (var i = 0; i < faces; i++) {
+      var nx = reader.getFloat32(offset, true);
+      var ny = reader.getFloat32(offset+4, true);
+      var nz = reader.getFloat32(offset+8, true);
+      offset += 12;
+      for (var j = 0; j < 3; j++) {
+        var idx = i * 9 + j * 3;
+        verts[idx]   = reader.getFloat32(offset, true);
+        verts[idx+1] = reader.getFloat32(offset+4, true);
+        verts[idx+2] = reader.getFloat32(offset+8, true);
+        norms[idx] = nx; norms[idx+1] = ny; norms[idx+2] = nz;
+        offset += 12;
+      }
+      offset += 2; // attribute byte count
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(norms, 3));
+    return geometry;
+  }
+
+  // Rotación con ratón
+  var isDragging = false;
+  var prevMouse = { x: 0, y: 0 };
+  var rotation = { x: 0, y: 0 };
+  var mesh;
+
+  document.addEventListener('mousedown', function(e) { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+  document.addEventListener('mouseup', function() { isDragging = false; });
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    var dx = e.clientX - prevMouse.x;
+    var dy = e.clientY - prevMouse.y;
+    rotation.y += dx * 0.01;
+    rotation.x += dy * 0.01;
+    prevMouse = { x: e.clientX, y: e.clientY };
+  });
+
+  // Touch
+  document.addEventListener('touchstart', function(e) { isDragging = true; prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; });
+  document.addEventListener('touchend', function() { isDragging = false; });
+  document.addEventListener('touchmove', function(e) {
+    if (!isDragging) return;
+    var dx = e.touches[0].clientX - prevMouse.x;
+    var dy = e.touches[0].clientY - prevMouse.y;
+    rotation.y += dx * 0.01;
+    rotation.x += dy * 0.01;
+    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  });
+
+  window.addEventListener('resize', function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  var autoRotate = true;
+  document.addEventListener('mousedown', function() { autoRotate = false; });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    scene.traverse(function(obj) {
+      if (obj.isMesh) {
+        if (autoRotate) obj.rotation.y += 0.008;
+        else { obj.rotation.y = rotation.y; obj.rotation.x = rotation.x; }
+      }
+    });
+    renderer.render(scene, camera);
+  }
+  animate();
+</script>
+</body>
+</html>
